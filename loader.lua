@@ -1,33 +1,71 @@
-local pastefy_raw="https://pastefy.app/0NhYgFqH/raw"
-local key_part_a="0+;p-%d>#*3"
+local pastefy_raw = "https://pastefy.app/0NhYgFqH/raw"
+local key_part_a = "0+;p-%d>#*3"
 
-local function get(u)
-    local ok,r=pcall(function()
-        return game:HttpGet(u,true)
+local function getRaw(url)
+    local ok, res = pcall(function()
+        return game:HttpGet(url, true)
     end)
-    if not ok or not r or r=="" then
-        error("http")
+    if not ok then
+        warn("Erro HttpGet: "..tostring(res))
+        return nil
     end
-    return r
+    return res
 end
 
-local function xor_decode(d,k)
-    local t={}
-    local l=#k
-    for i=1,#d do
-        local b=string.byte(d,i)
-        local kb=string.byte(k,((i-1)%l)+1)
-        t[i]=string.char(bit32.bxor(b,kb))
+local bxor = bit32.bxor
+
+local function xor_decode(data, key)
+    local result = {}
+    local key_len = #key
+
+    for i = 1, #data do
+        local byte = string.byte(data, i)
+        local key_byte = string.byte(key, ((i - 1) % key_len) + 1)
+        result[i] = string.char(bxor(byte, key_byte))
     end
-    return table.concat(t)
+
+    return table.concat(result)
 end
 
-local data=get(pastefy_raw):gsub("\r",""):gsub("\n","")
-local id,partb=data:match("^([^|]+)|(.+)$")
-if not id then error("pf") end
+warn("1: Pegando Pastefy")
 
-local key=key_part_a..partb
-local enc=get("https://pastebin.com/raw/"..id)
+local data = getRaw(pastefy_raw)
+if not data then return end
 
-local dec=xor_decode(enc,key)
-loadstring(dec)()
+data = data:gsub("\r",""):gsub("\n","")
+
+warn("2: Lendo ID|KEY")
+
+local pastebin_id, key_part_b = data:match("^([^|]+)|(.+)$")
+if not pastebin_id then
+    warn("Formato errado no Pastefy: "..data)
+    return
+end
+
+local key = key_part_a .. key_part_b
+
+warn("3: Pegando Pastebin")
+
+local encrypted = getRaw("https://pastebin.com/raw/"..pastebin_id)
+if not encrypted then return end
+
+warn("4: Decodificando")
+
+local ok, decoded = pcall(function()
+    return xor_decode(encrypted, key)
+end)
+
+if not ok then
+    warn("Erro XOR")
+    return
+end
+
+warn("5: Executando")
+
+local success, err = pcall(function()
+    loadstring(decoded)()
+end)
+
+if not success then
+    warn("Erro final: "..tostring(err))
+end
